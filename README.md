@@ -16,5 +16,5 @@ Gym for Reinforcement Learning load balancing on SDN
 ```
 import gym
 import gym_foo
-env = gym.make('foo-v0')
+env = gym.make('load-balance-v0')
 ```

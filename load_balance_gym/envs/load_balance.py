@@ -119,16 +119,17 @@ class LoadBalanceEnv(gym.Env):
 
 
     def _next_observation(self):
-        # Get the data points for the last 5 days and scale to between 0-1
+        # Get the data points for the last 5 snapshots (already scaled to 0-1)
         frame = np.array([
-            self.df.loc[self.current_step: self.current_step + 5, 'Open'].values / MAX_SHARE_PRICE,
-            self.df.loc[self.current_step: self.current_step + 5, 'High'].values / MAX_SHARE_PRICE,
-            self.df.loc[self.current_step: self.current_step + 5, 'Low'].values / MAX_SHARE_PRICE,
-            self.df.loc[self.current_step: self.current_step + 5, 'Close'].values / MAX_SHARE_PRICE,
-            self.df.loc[self.current_step: self.current_step + 5, 'Volume'].values / MAX_NUM_SHARES,
+            self.df.loc[self.current_step: self.current_step + 5, 'M_a'].values,
+            self.df.loc[self.current_step: self.current_step + 5, 'M_b'].values,
+            self.df.loc[self.current_step: self.current_step + 5, 'M_c'].values,
+            self.df.loc[self.current_step: self.current_step + 5, 'M_d'].values,
+            self.df.loc[self.current_step: self.current_step + 5, 'M_e'].values,
+            self.df.loc[self.current_step: self.current_step + 5, 'M_f'].values,
        ])
 
-       # Append additional data and scale each value to between 0-1
+       # TODO: Append additional data and scale each value to between 0-1
        obs = np.append(frame, [[
             self.balance / MAX_ACCOUNT_BALANCE,
             self.max_net_worth / MAX_ACCOUNT_BALANCE,
