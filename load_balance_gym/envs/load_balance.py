@@ -2,19 +2,22 @@ import gym
 from gym import error, spaces, utils
 from gym.utils import seeding
 
+import pandas as pd
+
 # based on tutorial from: https://towardsdatascience.com/creating-a-custom-openai-gym-environment-for-stock-trading-be532be3910e
+
+DATAFRAME_FILE = './dataframe/dataframe-h1-client-h2-server-usage-rate.csv'
 
 # reward = 1 / utilizacao_total_rede * (0.1 * num_steps)
 MAX_REWARD = 1
 
 NUM_LINKS = 6 # considerando rede de exemplo
-NUM_FEATURES = 1 + NUM_LINKS
+NUM_FEATURES = NUM_LINKS # considerando a taxa de utilização de cada link
 NUM_DISCRETE_ACTIONS = 3
 
 SNAPSHOTS_TO_CONSIDER = 3 # vamos olhar para os ultimos 5 snapshots antes de tomar uma ação
 
 INITIAL_NETWORK_USAGE = 0
-
 
 class LoadBalanceEnv(gym.Env):
     metadata = {'render.modes': ['human']}
@@ -25,11 +28,10 @@ class LoadBalanceEnv(gym.Env):
         # Serão os snapshots coletados pela rede. Cada snapshot contém o valor
         # de M de cada link da rede naquele instante
         # M = utliação atual do link / capacidade do link
-        self.dataframe = dataframe
+        self.dataframe = pd.read_csv(DATAFRAME_FILE)
 
         # Cada (linha / snapshot) possui 6 features que nos interessam
-        # numero de features = 1 (nro snapshot) + 6 (M de cada link) = 7
-        # considerando rede de exemplo = 1 + (8*3) = 25
+        # numero de features = 6 (taxa de utilização de cada link) + numero snapshot = 7
         # contains all of the input variables we want our agent to consider before making an action
         self.observation_space = spaces.Box(
             low=0,
@@ -55,6 +57,7 @@ class LoadBalanceEnv(gym.Env):
 
         self.reward_range = (0, MAX_REWARD) # # TODO: revisitar o valor máximo da recompensa, por enquanto é 1
 
+
     def reset(self):
         """
          - Reset the state of the environment to an initial state
@@ -78,7 +81,9 @@ class LoadBalanceEnv(gym.Env):
         # it essentially gives our agent’s more unique experiences from the same data set.
         # The _next_observation method compiles the stock data for the last five time steps,
         # appends the agent’s account information, and scales all the values to between 0 and 1
-        self.current_step = random.randint(0, len(self.df.loc[:, 'Open'].values) - 6)
+
+        # self.current_step = random.randint(0, len(self.df.loc[:, 'Open'].values) - 6)
+        self.current_step = random.randint(0, len(self.dataframe))
 
 
     def step(self, action):
@@ -121,25 +126,25 @@ class LoadBalanceEnv(gym.Env):
     def _next_observation(self):
         # Get the data points for the last 5 snapshots (already scaled to 0-1)
         frame = np.array([
-            self.df.loc[self.current_step: self.current_step + 5, 'M_a'].values,
-            self.df.loc[self.current_step: self.current_step + 5, 'M_b'].values,
-            self.df.loc[self.current_step: self.current_step + 5, 'M_c'].values,
-            self.df.loc[self.current_step: self.current_step + 5, 'M_d'].values,
-            self.df.loc[self.current_step: self.current_step + 5, 'M_e'].values,
-            self.df.loc[self.current_step: self.current_step + 5, 'M_f'].values,
+            self.df.loc[self.current_step: self.current_step + SNAPSHOTS_TO_CONSIDER, 'M_a'].values,
+            self.df.loc[self.current_step: self.current_step + SNAPSHOTS_TO_CONSIDER, 'M_b'].values,
+            self.df.loc[self.current_step: self.current_step + SNAPSHOTS_TO_CONSIDER, 'M_c'].values,
+            self.df.loc[self.current_step: self.current_step + SNAPSHOTS_TO_CONSIDER, 'M_d'].values,
+            self.df.loc[self.current_step: self.current_step + SNAPSHOTS_TO_CONSIDER, 'M_e'].values,
+            self.df.loc[self.current_step: self.current_step + SNAPSHOTS_TO_CONSIDER, 'M_f'].values,
        ])
 
-       # TODO: Append additional data and scale each value to between 0-1
-       obs = np.append(frame, [[
-            self.balance / MAX_ACCOUNT_BALANCE,
-            self.max_net_worth / MAX_ACCOUNT_BALANCE,
-            self.shares_held / MAX_NUM_SHARES,
-            self.cost_basis / MAX_SHARE_PRICE,
-            self.total_shares_sold / MAX_NUM_SHARES,
-            self.total_sales_value / (MAX_NUM_SHARES * MAX_SHARE_PRICE),
-        ]], axis=0)
+       # # TODO: Append additional data and scale each value to between 0-1
+       # obs = np.append(frame, [[
+       #      self.balance / MAX_ACCOUNT_BALANCE,
+       #      self.max_net_worth / MAX_ACCOUNT_BALANCE,
+       #      self.shares_held / MAX_NUM_SHARES,
+       #      self.cost_basis / MAX_SHARE_PRICE,
+       #      self.total_shares_sold / MAX_NUM_SHARES,
+       #      self.total_sales_value / (MAX_NUM_SHARES * MAX_SHARE_PRICE),
+       #  ]], axis=0)
 
-        return obs
+        return frame
 
 
     def _take_action(self, action):
@@ -150,6 +155,8 @@ class LoadBalanceEnv(gym.Env):
         )
         action_type = action[0]
         amount = action[1]
+
+        # new_state = (current_state, action)
 
         if action_type < 1:
             # Buy amount % of balance in shares
