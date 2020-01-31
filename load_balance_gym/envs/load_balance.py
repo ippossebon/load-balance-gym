@@ -8,55 +8,66 @@ import pandas as pd
 
 DATAFRAME_FILE = './dataframe/dataframe-h1-client-h2-server-usage-rate.csv'
 
-# reward = 1 / utilizacao_total_rede * (0.1 * num_steps)
-MAX_REWARD = 1
-
-NUM_LINKS = 6 # considerando rede de exemplo
-NUM_FEATURES = NUM_LINKS # considerando a taxa de utilização de cada link
-NUM_DISCRETE_ACTIONS = 3
-
-SNAPSHOTS_TO_CONSIDER = 3 # vamos olhar para os ultimos 5 snapshots antes de tomar uma ação
-
-INITIAL_NETWORK_USAGE = 0
+LINK_CAPACITY = 1000 # TODO: confirmar capacidade maxima do link
 
 class LoadBalanceEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
     def __init__(self, dataframe):
         super(LoadBalanceEnv, self).__init__()
-        # pandas dataframe
-        # Serão os snapshots coletados pela rede. Cada snapshot contém o valor
-        # de M de cada link da rede naquele instante
-        # M = utliação atual do link / capacidade do link
-        self.dataframe = pd.read_csv(DATAFRAME_FILE)
 
-        # Cada (linha / snapshot) possui 6 features que nos interessam
-        # numero de features = 6 (taxa de utilização de cada link) + numero snapshot = 7
-        # contains all of the input variables we want our agent to consider before making an action
+        self.switches = ['S1', 'S2', 'S3', 'S4', 'S5']
+        self.links = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
+        self.topology = {
+            'S1': ['B', 'C'], # links entre switches,
+            'S2': ['B', 'D', 'E', 'F'],
+            'S3': ['F', 'G', 'H', 'I'],
+            'S4': ['C', 'E', 'G'],
+            'S5': ['D', 'H']
+        }
+
+        # Estado inicial = utilização de cada link
+        self.usage = {
+         'A': 0,
+         'B': 0,
+         'C': 0,
+         'D': 0,
+         'F': 0,
+         'G': 0,
+         'H': 0,
+         'I': 0
+        }
+
+        self.possible_routes = [
+            ['B', 'D', 'H', 'I'],
+            ['B', 'F', 'I'],
+            ['B', 'E', 'G', 'I'],
+            ['C', 'G', 'I'],
+            ['C', 'E', 'D', 'H', 'I'],
+            ['C', 'E', 'F', 'I']
+        ]
+
+        # Utilização dos links da rede
         self.observation_space = spaces.Box(
             low=0,
-            high=1,
-            shape=(SNAPSHOTS_TO_CONSIDER + 1, NUM_FEATURES), # snaphsots + atual
+            high=LINK_CAPACITY, # utilização maxima do link
+            shape=(len(self.links), 1), # é um array de utilização dos links
             dtype=np.float16
         )
 
-        # Ações possíveis:
-        # - não faz nada
-        # - enviar todo o fluxo pelo mesmo caminho
-        # - dividir o fluxo entre 2 menores caminhos
-        self.action_space = spaces.Discrete(NUM_DISCRETE_ACTIONS) #interface inidical
+        # A ação é escolher o switch sobre o qual vai agir. Isto é, o switch que
+        # terá o fluxo dividido entre 2 caminhos
+        self.action_space = spaces.Discrete(len(self.switches)) # array com o índice do switch sobre o qual vamos agir
+        self.action_space = spaces.Box(
+            low=0,
+            high=len(self.switches), # # TODO: rever
+            shape=(len(self.switches), len(self.possible_routes), len(self.possible_routes)) # [switch_id, rota1, rota2]
+            dtype=np.uint8)
+        )
 
-
-        # Estado inicial
-        self.M_a = 0
-        self.M_b = 0
-        self.M_c = 0
-        self.M_d = 0
-        self.M_e = 0
-        self.M_f = 0
-
-        self.reward_range = (0, MAX_REWARD) # # TODO: revisitar o valor máximo da recompensa, por enquanto é 1
-
+        # Se tornou o uso da rede MAIS homogêneo, recompensa = 1
+        # Se tornou o uso da rede MENOS homogêneo, recompensa = -1
+        self.reward_range = (-1, 1)
 
     def reset(self):
         """
@@ -69,12 +80,16 @@ class LoadBalanceEnv(gym.Env):
         - Called any time a new environment is created or to reset an existing environment’s state.
         """
         # Reset the state of the environment to an initial state
-        self.M_a = 0
-        self.M_b = 0
-        self.M_c = 0
-        self.M_d = 0
-        self.M_e = 0
-        self.M_f = 0
+        self.usage = {
+         'A': 0,
+         'B': 0,
+         'C': 0,
+         'D': 0,
+         'F': 0,
+         'G': 0,
+         'H': 0,
+         'I': 0
+        }
 
         # Set the current step to a random point within the data frame
         # We set the current step to a random point within the data frame, because
@@ -91,17 +106,31 @@ class LoadBalanceEnv(gym.Env):
         # It will take an action variable and will return a list of four things:
         # the next state, the reward for the current state, a boolean representing
         # whether the current episode of our model is done and some additional info on our problem.
-        self._take_action(action)
-        self.current_step += 1
+        switch_id = action[0]
+        route1 = action[1]
+        route2 = action[2]
 
-        if self.current_step > len(self.df.loc[:, 'Open'].values) - 6:
-            self.current_step = 0
+        # action corresponde ao switch sobre o qual vamos agir, isto é: S1, S2, S3, S4 ou S5
+        if switch_id == 0:
+            # Atua sobre S1
+            # Pega o que temos nos links
+            # TODO
+        else if switch_id == 1:
+            # Atua sobre S2
+            # TODO
+        else if switch_id == 2:
+            # Atua sobre S3
+            # TODO
+        else if switch_id == 3:
+            # Atua sobre S4
+            # TODO
+        else if switch_id == 4:
+            # Atua sobre S5
+            # TODO
+        else:
+            # ação inválida
+            # TODO: o que fazer?
 
-        delay_modifier = (self.current_step / MAX_STEPS)
-
-        reward = self.balance * delay_modifier
-        done = self.net_worth <= 0
-        obs = self._next_observation()
 
         return obs, reward, done, {}
 
@@ -121,64 +150,3 @@ class LoadBalanceEnv(gym.Env):
         print(f'Avg cost for held shares: {self.cost_basis} (Total sales value: {self.total_sales_value})')
         print(f'Net worth: {self.net_worth} (Max net worth: {self.max_net_worth})')
         print(f'Profit: {profit}')
-
-
-    def _next_observation(self):
-        # Get the data points for the last 5 snapshots (already scaled to 0-1)
-        frame = np.array([
-            self.df.loc[self.current_step: self.current_step + SNAPSHOTS_TO_CONSIDER, 'M_a'].values,
-            self.df.loc[self.current_step: self.current_step + SNAPSHOTS_TO_CONSIDER, 'M_b'].values,
-            self.df.loc[self.current_step: self.current_step + SNAPSHOTS_TO_CONSIDER, 'M_c'].values,
-            self.df.loc[self.current_step: self.current_step + SNAPSHOTS_TO_CONSIDER, 'M_d'].values,
-            self.df.loc[self.current_step: self.current_step + SNAPSHOTS_TO_CONSIDER, 'M_e'].values,
-            self.df.loc[self.current_step: self.current_step + SNAPSHOTS_TO_CONSIDER, 'M_f'].values,
-       ])
-
-       # # TODO: Append additional data and scale each value to between 0-1
-       # obs = np.append(frame, [[
-       #      self.balance / MAX_ACCOUNT_BALANCE,
-       #      self.max_net_worth / MAX_ACCOUNT_BALANCE,
-       #      self.shares_held / MAX_NUM_SHARES,
-       #      self.cost_basis / MAX_SHARE_PRICE,
-       #      self.total_shares_sold / MAX_NUM_SHARES,
-       #      self.total_sales_value / (MAX_NUM_SHARES * MAX_SHARE_PRICE),
-       #  ]], axis=0)
-
-        return frame
-
-
-    def _take_action(self, action):
-        # Set the current price to a random price within the time step
-        current_price = random.uniform(
-            self.df.loc[self.current_step, "Open"],
-            self.df.loc[self.current_step, "Close"]
-        )
-        action_type = action[0]
-        amount = action[1]
-
-        # new_state = (current_state, action)
-
-        if action_type < 1:
-            # Buy amount % of balance in shares
-            total_possible = self.balance / current_price
-            shares_bought = total_possible * amount
-            prev_cost = self.cost_basis * self.shares_held
-            additional_cost = shares_bought * current_price
-            self.balance -= additional_cost
-            self.cost_basis = (prev_cost + additional_cost) / (self.shares_held + shares_bought)
-            self.shares_held += shares_bought
-        elif actionType < 2:
-            # Sell amount % of shares held
-            shares_sold = self.shares_held * amount .
-            self.balance += shares_sold * current_price
-            self.shares_held -= shares_sold
-            self.total_shares_sold += shares_sold
-            self.total_sales_value += shares_sold * current_price
-
-        self.netWorth = self.balance + self.shares_held * current_price
-
-        if self.net_worth > self.max_net_worth:
-            self.max_net_worth = net_worth
-
-        if self.shares_held == 0:
-            self.cost_basis = 0
