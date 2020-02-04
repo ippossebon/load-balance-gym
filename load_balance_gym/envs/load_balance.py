@@ -2,9 +2,15 @@ import gym
 from gym import error, spaces, utils
 from gym.utils import seeding
 
-import pandas as pd
+from keras.models import Sequential
+from keras.layers import Dense
+
+import pandas
+import numpy
 
 # based on tutorial from: https://towardsdatascience.com/creating-a-custom-openai-gym-environment-for-stock-trading-be532be3910e
+
+# tutorial importante: https://machinelearningmastery.com/tutorial-first-neural-network-python-keras/
 
 DATAFRAME_FILE = './dataframe/dataframe-h1-client-h2-server-usage-rate.csv'
 
@@ -61,7 +67,7 @@ class LoadBalanceEnv(gym.Env):
         self.action_space = spaces.Box(
             low=0,
             high=len(self.switches), # # TODO: rever
-            shape=(len(self.switches), len(self.possible_routes), len(self.possible_routes)) # [switch_id, rota1, rota2]
+            shape=(len(self.switches), len(self.links), len(self.links)) # [switch_id, link_saida1, link_saida2]
             dtype=np.uint8)
         )
 
@@ -98,41 +104,135 @@ class LoadBalanceEnv(gym.Env):
         # appends the agent’s account information, and scales all the values to between 0 and 1
 
         # self.current_step = random.randint(0, len(self.df.loc[:, 'Open'].values) - 6)
-        self.current_step = random.randint(0, len(self.dataframe))
+        # self.current_step = random.randint(0, len(self.dataframe))
+
+        # self.createNeuralNetworkModel()
+
+
+    def createNeuralNetworkModel(self):
+        # Cria rede neural
+        """
+        The model expects rows of data with 6 variables (the input_dim=6 argument)
+        The first hidden layer has 12 nodes and uses the relu activation function.
+        The second hidden layer has 8 nodes and uses the relu activation function.
+        The output layer has 6 nodes and uses the sigmoid activation function.
+        """
+        self.nn_model = Sequential()
+        # Vamos usar fully conected layers, por isso estamos usando Dense.
+        # We can specify the number of neurons or nodes in the layer as the first argument, and specify the activation function using the activation argument.
+        self.nn_model.add(Dense(12, input_dim=6, activation='relu')) # input_dim=6 pois temos 6 inputs
+        self.nn_model.add(Dense(8, activation='relu'))
+        self.nn_model.add(Dense(6, activation='sigmoid')) # precisamos de 6 saídas; usamos Sigmoid como função de ativação para que a saída esteja entre 0 e 1.
+
+        # compile the keras model
+        #  metrics=['accuracy']
+        model.compile(loss='binary_crossentropy', optimizer='adam')
+
+        # Training occurs over epochs and each epoch is split into batches.
+        # Epoch: One pass through all of the rows in the training dataset.
+        # Batch: One or more samples considered by the model within an epoch before weights are updated.
+
+        # treinamento nao supervisionado
+        history = model.fit(
+            self.training_set, # será o meu dataframe
+            self.training_set, # será o meu dataframe
+            epochs=EPOCHS,
+            validation_data=[self.validation_set, self.validation_set]
+        )
 
 
     def step(self, action):
+        done = False # Aprendizado continuado
+
         # Execute one time step within the environment
         # It will take an action variable and will return a list of four things:
         # the next state, the reward for the current state, a boolean representing
         # whether the current episode of our model is done and some additional info on our problem.
         switch_id = action[0]
-        route1 = action[1]
-        route2 = action[2]
+        output_link1 = action[1]
+        output_link2 = action[2]
 
         # action corresponde ao switch sobre o qual vamos agir, isto é: S1, S2, S3, S4 ou S5
         if switch_id == 0:
             # Atua sobre S1
-            # Pega o que temos nos links
-            # TODO
+            # Pega o que temos nos links que saem de S1 e divide entre output_link1 e output_link2
+            total_usage = 0
+
+            for link in self.topology['S1']:
+                total_usage += self.usage[link]
+
+            next_state = self.generateNextState('S1', total_usage)
+
         else if switch_id == 1:
             # Atua sobre S2
-            # TODO
+            for link in self.topology['S2']:
+                total_usage += self.usage[link]
+
+            next_state = self.generateNextState('S2', total_usage)
+
         else if switch_id == 2:
             # Atua sobre S3
-            # TODO
+            for link in self.topology['S3']:
+                total_usage += self.usage[link]
+
+            next_state = self.generateNextState('S3', total_usage)
+
         else if switch_id == 3:
             # Atua sobre S4
-            # TODO
+            for link in self.topology['S4']:
+                total_usage += self.usage[link]
+
+            next_state = self.generateNextState('S4', total_usage)
+
         else if switch_id == 4:
             # Atua sobre S5
-            # TODO
-        else:
-            # ação inválida
-            # TODO: o que fazer?
+            for link in self.topology['S5']:
+                total_usage += self.usage[link]
+
+            next_state = self.generateNextState('S5', total_usage)
 
 
-        return obs, reward, done, {}
+        previous_state = dict(self.usage)
+        reward = self.calculateReward(next_state)
+
+        # Atualiza estado
+        self.usage = dict(next_state)
+
+        # It will take an action variable and will return a list of four things:
+        # the next state, the reward for the current state, a boolean representing
+        # whether the current episode of our model is done and some additional info on our problem.
+        return next_state, reward, done, {}
+
+
+    def generateNextState(self, total_usage, switch_id):
+        # Atualiza estado
+        next_state = {}
+        for link_id in self.usage.keys():
+            if link_id in self.topology[switch_id]:
+                # deve atualizar o valor utilizado
+                next_state[link_id] = total_usage / 2
+            else:
+                next_state[link_id] = self.usage[link_id]
+
+        return next_state
+
+
+    def calculateReward(self, next_state):
+        # state is usage dict
+        next_usage_values = []
+
+        for link_id in next_state.keys():
+            next_usage_values.append(next_state[link_id])
+
+        np_next_usage = np.array(next_usage_values)
+        mean_next_usage = np.mean(np_next_usage)
+        std_next_usage = np.std(np_next_usage)
+
+        # Recompensa = 1 / desvio_padrao_soma_utilizacao_rede
+        # Quanto menor for o desvio padrão da utilização da rede, maior será a recompensa
+        reward = 1 / float(std_next_usage)
+
+        return reward
 
 
     def render(self, mode='human', close=False):

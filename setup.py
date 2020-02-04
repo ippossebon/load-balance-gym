@@ -1,6 +1,15 @@
-from setuptools import setup
+from 'load_balance_gym' import LoadBalanceEnv
 
-setup(name='load_balance_gym',
-      version='0.0.1',
-      install_requires=['gym']#And any other dependencies required
-)
+env = LoadBalanceEnv()
+obs = env.reset()
+n_steps = 10
+
+for step in range(n_steps):
+    # Random action
+    action = env.action_space.sample()
+    print('step = ', step)
+    print('action = ', action)
+
+    state, reward, done, info = env.step(action)
+    print('state = ', state)
+    print('reward = ', reward)
