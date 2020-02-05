@@ -1,6 +1,7 @@
 from gym.envs.registration import register
 
 register(
-    id='load-balance-v0',
+    id='Load-Balance-v1',
     entry_point='load_balance_gym.envs:LoadBalanceEnv',
+    kwargs={'usage': {}}
 )

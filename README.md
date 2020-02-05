@@ -6,7 +6,9 @@ Gym for Reinforcement Learning load balancing on SDN
 **To install the environment go to the root folder and run:**
 
 
-`pip install -e .`
+Referece: https://medium.com/analytics-vidhya/building-custom-gym-environments-for-reinforcement-learning-24fa7530cbb5
+
+`pip install -e .` inside `load_balance_gym` file
 
 
 

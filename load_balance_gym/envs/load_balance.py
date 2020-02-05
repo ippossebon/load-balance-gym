@@ -19,8 +19,10 @@ LINK_CAPACITY = 1000 # TODO: confirmar capacidade maxima do link
 class LoadBalanceEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, dataframe):
+    def __init__(self, usage):
         super(LoadBalanceEnv, self).__init__()
+
+        self.initial_usage = usage
 
         self.switches = ['S1', 'S2', 'S3', 'S4', 'S5']
         self.links = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
@@ -33,16 +35,7 @@ class LoadBalanceEnv(gym.Env):
         }
 
         # Estado inicial = utilização de cada link
-        self.usage = {
-         'A': 0,
-         'B': 0,
-         'C': 0,
-         'D': 0,
-         'F': 0,
-         'G': 0,
-         'H': 0,
-         'I': 0
-        }
+        self.usage = usage
 
         self.possible_routes = [
             ['B', 'D', 'H', 'I'],
@@ -58,7 +51,7 @@ class LoadBalanceEnv(gym.Env):
             low=0,
             high=LINK_CAPACITY, # utilização maxima do link
             shape=(len(self.links), 1), # é um array de utilização dos links
-            dtype=np.float16
+            dtype=numpy.float16
         )
 
         # A ação é escolher o switch sobre o qual vai agir. Isto é, o switch que
@@ -66,9 +59,9 @@ class LoadBalanceEnv(gym.Env):
         self.action_space = spaces.Discrete(len(self.switches)) # array com o índice do switch sobre o qual vamos agir
         self.action_space = spaces.Box(
             low=0,
-            high=len(self.switches), # # TODO: rever
-            shape=(len(self.switches), len(self.links), len(self.links)) # [switch_id, link_saida1, link_saida2]
-            dtype=np.uint8)
+            high=len(self.switches)-1, # # TODO: rever
+            shape=(3, 1), # [switch_id, link_saida1, link_saida2] shape=(3,1) = 1 linha, 3 colunas
+            dtype=numpy.uint8
         )
 
         # Se tornou o uso da rede MAIS homogêneo, recompensa = 1
@@ -86,16 +79,7 @@ class LoadBalanceEnv(gym.Env):
         - Called any time a new environment is created or to reset an existing environment’s state.
         """
         # Reset the state of the environment to an initial state
-        self.usage = {
-         'A': 0,
-         'B': 0,
-         'C': 0,
-         'D': 0,
-         'F': 0,
-         'G': 0,
-         'H': 0,
-         'I': 0
-        }
+        self.usage = self.initial_usage
 
         # Set the current step to a random point within the data frame
         # We set the current step to a random point within the data frame, because
@@ -152,44 +136,55 @@ class LoadBalanceEnv(gym.Env):
         output_link1 = action[1]
         output_link2 = action[2]
 
+        # print('action = ', action)
+        # print('switch_id = ', switch_id)
+        # print('output_link1 = ', output_link1)
+        # print('output_link2 = ', output_link2)
+        # print('self.usage = ', self.usage)
+
+        # Pega o que temos nos links que saem de S1 e divide entre output_link1 e output_link2
+        total_usage = 0
+        next_state = {}
+
         # action corresponde ao switch sobre o qual vamos agir, isto é: S1, S2, S3, S4 ou S5
         if switch_id == 0:
             # Atua sobre S1
-            # Pega o que temos nos links que saem de S1 e divide entre output_link1 e output_link2
-            total_usage = 0
-
             for link in self.topology['S1']:
                 total_usage += self.usage[link]
 
-            next_state = self.generateNextState('S1', total_usage)
+            # Atualmente, estamos ignorando output_link1 e output_link2, e dividindo entre 2 os fluxos
+            next_state = self.generateNextState(total_usage, 'S1')
 
-        else if switch_id == 1:
+        elif switch_id == 1:
             # Atua sobre S2
             for link in self.topology['S2']:
                 total_usage += self.usage[link]
 
-            next_state = self.generateNextState('S2', total_usage)
+            next_state = self.generateNextState(total_usage, 'S2')
 
-        else if switch_id == 2:
+        elif switch_id == 2:
             # Atua sobre S3
             for link in self.topology['S3']:
                 total_usage += self.usage[link]
 
-            next_state = self.generateNextState('S3', total_usage)
+            next_state = self.generateNextState(total_usage, 'S3')
 
-        else if switch_id == 3:
+        elif switch_id == 3:
             # Atua sobre S4
             for link in self.topology['S4']:
                 total_usage += self.usage[link]
 
-            next_state = self.generateNextState('S4', total_usage)
+            next_state = self.generateNextState(total_usage, 'S4')
 
-        else if switch_id == 4:
+        elif switch_id == 4:
             # Atua sobre S5
             for link in self.topology['S5']:
                 total_usage += self.usage[link]
 
-            next_state = self.generateNextState('S5', total_usage)
+            next_state = self.generateNextState(total_usage, 'S5')
+        else:
+            print('Erro: switch_id = ', switch_id)
+            exit(0)
 
 
         previous_state = dict(self.usage)
@@ -207,13 +202,17 @@ class LoadBalanceEnv(gym.Env):
     def generateNextState(self, total_usage, switch_id):
         # Atualiza estado
         next_state = {}
+        available_links_count = len(self.topology[switch_id])
+
         for link_id in self.usage.keys():
             if link_id in self.topology[switch_id]:
                 # deve atualizar o valor utilizado
-                next_state[link_id] = total_usage / 2
+                # divide a carga entre todos os links do switch
+                next_state[link_id] = (total_usage and float(total_usage/available_links_count)) or 0
             else:
                 next_state[link_id] = self.usage[link_id]
 
+        # print('next_state = ', next_state)
         return next_state
 
 
@@ -224,13 +223,13 @@ class LoadBalanceEnv(gym.Env):
         for link_id in next_state.keys():
             next_usage_values.append(next_state[link_id])
 
-        np_next_usage = np.array(next_usage_values)
-        mean_next_usage = np.mean(np_next_usage)
-        std_next_usage = np.std(np_next_usage)
+        np_next_usage = numpy.array(next_usage_values)
+        mean_next_usage = numpy.mean(np_next_usage)
+        std_next_usage = numpy.std(np_next_usage)
 
         # Recompensa = 1 / desvio_padrao_soma_utilizacao_rede
         # Quanto menor for o desvio padrão da utilização da rede, maior será a recompensa
-        reward = 1 / float(std_next_usage)
+        reward = (std_next_usage and 1 / float(std_next_usage)) or 0
 
         return reward
 
